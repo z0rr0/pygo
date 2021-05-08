@@ -80,3 +80,41 @@ func ChunkGenerator(items []int, size int) func() ([]int, error) {
 		return items[j:step], nil
 	}
 }
+
+// GenStruct is struct generator.
+type GenStruct struct {
+	stop  int
+	step  int
+	value int
+	items []int
+}
+
+// NewGenStruct returns a new struct generator.
+func NewGenStruct(start, stop, step int) (*GenStruct, error) {
+	if step < 1 {
+		return nil, ErrOffsetIteration
+	}
+	return &GenStruct{stop: stop, step: step, value: start}, nil
+}
+
+func NewGenStructChunk(items []int, size int) (*GenStruct, error) {
+	if size < 1 {
+		return nil, ErrOffsetIteration
+	}
+	return &GenStruct{stop: len(items), step: size, items: items}, nil
+}
+
+// Next returns a new generation value and flag that it is not the end.
+func (g *GenStruct) Next() (int, bool) {
+	defer func() { g.value += g.step }()
+	return g.value, g.value < g.stop
+}
+
+func (g *GenStruct) NextChunk() ([]int, bool) {
+	var i = g.value + g.step
+	if i > g.stop {
+		i = g.stop
+	}
+	defer func() { g.value = i }()
+	return g.items[g.value:i], g.value < g.stop
+}

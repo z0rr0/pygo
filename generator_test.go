@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+const (
+	benchStop  = 1000
+	benchChunk = 1000
+)
+
 func compareSliceInt(a, b []int) error {
 	if n, m := len(a), len(b); n != m {
 		return fmt.Errorf("failed slice lenght %v != %v", n, m)
@@ -70,7 +75,7 @@ func TestXRange(t *testing.T) {
 
 func BenchmarkXRange(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		g, err := XRange(0, 1000, 1)
+		g, err := XRange(0, benchStop, 1)
 		if err != nil {
 			b.Errorf("failed: %v", err)
 		}
@@ -122,7 +127,7 @@ func TestChunk(t *testing.T) {
 }
 
 func BenchmarkChunk(b *testing.B) {
-	items := make([]int, 1000)
+	items := make([]int, benchChunk)
 	for i := range items {
 		items[i] = i
 	}
@@ -191,7 +196,7 @@ func BenchmarkGenerator(b *testing.B) {
 		err error
 	)
 	for i := 0; i < b.N; i++ {
-		g := Generator(0, 1000, 1)
+		g := Generator(0, benchStop, 1)
 		k := 0
 		for j, err = g(); err == nil; j, err = g() {
 			if k != j {
@@ -251,7 +256,7 @@ func BenchmarkChunkGenerator(b *testing.B) {
 		chunks []int
 		err    error
 	)
-	items := make([]int, 1000)
+	items := make([]int, benchChunk)
 	for i := range items {
 		items[i] = i
 	}
@@ -268,6 +273,120 @@ func BenchmarkChunkGenerator(b *testing.B) {
 		if err != ErrStopIteration {
 			b.Errorf("failed stop %v", err)
 			continue
+		}
+	}
+}
+
+func TestNewGenStruct(t *testing.T) {
+	cases := []struct {
+		start    int
+		stop     int
+		step     int
+		expected []int
+		err      error
+	}{
+		{0, 0, 1, []int{}, nil},
+		{0, 1, 1, []int{0}, nil},
+		{0, 1, 0, nil, ErrOffsetIteration},
+		{0, 1, -1, nil, ErrOffsetIteration},
+		{0, 0, 1, []int{}, nil},
+		{2, 0, 1, []int{}, nil},
+		{0, 3, 1, []int{0, 1, 2}, nil},
+		{3, 12, 2, []int{3, 5, 7, 9, 11}, nil},
+		{-7, 10, 5, []int{-7, -2, 3, 8}, nil},
+	}
+	for i, c := range cases {
+		g, err := NewGenStruct(c.start, c.stop, c.step)
+		if err != c.err {
+			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		// positive cases
+		output := make([]int, 0, len(c.expected))
+		for v, ok := g.Next(); ok; v, ok = g.Next() {
+			output = append(output, v)
+		}
+		err = compareSliceInt(output, c.expected)
+		if err != nil {
+			t.Errorf("failed [%d]: %v", i, err)
+		}
+	}
+}
+
+func BenchmarkGenStruct_Next(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		g, err := NewGenStruct(0, benchStop, 1)
+		if err != nil {
+			b.Error(err)
+		}
+		k := 0
+		for v, ok := g.Next(); ok; v, ok = g.Next() {
+			if k != v {
+				b.Errorf("failed %v != %v", k, v)
+			}
+			k++
+		}
+	}
+}
+
+func TestNewGenStructChunk(t *testing.T) {
+	cases := []struct {
+		items    []int
+		size     int
+		expected [][]int
+		err      error
+	}{
+		{[]int{}, 1, [][]int{}, nil},
+		{[]int{1, 2}, 1, [][]int{{1}, {2}}, nil},
+		{[]int{1, 2}, 0, [][]int{{1}, {2}}, ErrOffsetIteration},
+		{[]int{1, 2}, -1, [][]int{{1}, {2}}, ErrOffsetIteration},
+		{[]int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, nil},
+		{[]int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, nil},
+		{[]int{1, 2, 3, 4, 5}, 3, [][]int{{1, 2, 3}, {4, 5}}, nil},
+		{[]int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, nil},
+	}
+	for i, c := range cases {
+		g, err := NewGenStructChunk(c.items, c.size)
+		if err != c.err {
+			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		// positive cases
+		output := make([][]int, 0, len(c.expected))
+		for v, ok := g.NextChunk(); ok; v, ok = g.NextChunk() {
+			output = append(output, v)
+		}
+		err = compareSlices(c.expected, output)
+		if err != nil {
+			t.Errorf("failed [%d]: %v", i, err)
+		}
+	}
+}
+
+func BenchmarkGenStruct_NextChunk(b *testing.B) {
+	items := make([]int, benchChunk)
+	for i := range items {
+		items[i] = i
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g, err := NewGenStructChunk(items, 2)
+		if err != nil {
+			b.Errorf("failed: %v", err)
+		}
+		j := 0
+		for v, ok := g.NextChunk(); ok; v, ok = g.NextChunk() {
+			err = compareSliceInt(v, []int{j, j + 1})
+			if err != nil {
+				b.Errorf("failed %v", err)
+			}
+			j += 2
 		}
 	}
 }
