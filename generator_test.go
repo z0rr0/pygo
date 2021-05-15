@@ -10,6 +10,45 @@ const (
 	benchChunk = 1000
 )
 
+type testCase struct {
+	start    int
+	stop     int
+	step     int
+	expected []int
+	err      error
+}
+
+type chunkTestCase struct {
+	items    []int
+	size     int
+	expected [][]int
+	err      error
+}
+
+var (
+	testCases = []testCase{
+		{0, 0, 1, []int{}, nil},
+		{0, 1, 1, []int{0}, nil},
+		{0, 1, 0, nil, ErrOffsetIteration},
+		{0, 1, -1, nil, ErrOffsetIteration},
+		{0, 0, 1, []int{}, nil},
+		{2, 0, 1, []int{}, nil},
+		{0, 3, 1, []int{0, 1, 2}, nil},
+		{3, 12, 2, []int{3, 5, 7, 9, 11}, nil},
+		{-7, 10, 5, []int{-7, -2, 3, 8}, nil},
+	}
+	chunkTestCases = []chunkTestCase{
+		{[]int{}, 1, [][]int{}, nil},
+		{[]int{1, 2}, 1, [][]int{{1}, {2}}, nil},
+		{[]int{1, 2}, 0, [][]int{{1}, {2}}, ErrOffsetIteration},
+		{[]int{1, 2}, -1, [][]int{{1}, {2}}, ErrOffsetIteration},
+		{[]int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, nil},
+		{[]int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, nil},
+		{[]int{1, 2, 3, 4, 5}, 3, [][]int{{1, 2, 3}, {4, 5}}, nil},
+		{[]int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, nil},
+	}
+)
+
 func compareSliceInt(a, b []int) error {
 	if n, m := len(a), len(b); n != m {
 		return fmt.Errorf("failed slice lenght %v != %v", n, m)
@@ -34,26 +73,9 @@ func compareSlices(a, b [][]int) error {
 	return nil
 }
 
-func TestXRange(t *testing.T) {
-	cases := []struct {
-		start    int
-		stop     int
-		step     int
-		expected []int
-		err      error
-	}{
-		{0, 0, 1, []int{}, nil},
-		{0, 1, 1, []int{0}, nil},
-		{0, 1, 0, nil, ErrOffsetIteration},
-		{0, 1, -1, nil, ErrOffsetIteration},
-		{0, 0, 1, []int{}, nil},
-		{2, 0, 1, []int{}, nil},
-		{0, 3, 1, []int{0, 1, 2}, nil},
-		{3, 12, 2, []int{3, 5, 7, 9, 11}, nil},
-		{-7, 10, 5, []int{-7, -2, 3, 8}, nil},
-	}
-	for i, c := range cases {
-		g, err := XRange(c.start, c.stop, c.step)
+func TestChanGenerator(t *testing.T) {
+	for i, c := range testCases {
+		g, err := ChanGenerator(c.start, c.stop, c.step)
 		if err != c.err {
 			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
 			continue
@@ -73,13 +95,13 @@ func TestXRange(t *testing.T) {
 	}
 }
 
-func BenchmarkXRange(b *testing.B) {
+func BenchmarkChanGenerator(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		g, err := XRange(0, benchStop, 1)
+		g, err := ChanGenerator(i, i+benchStop, 1)
 		if err != nil {
 			b.Errorf("failed: %v", err)
 		}
-		j := 0
+		j := i
 		for k := range g {
 			if k != j {
 				b.Errorf("failed %v != %v", k, j)
@@ -89,24 +111,9 @@ func BenchmarkXRange(b *testing.B) {
 	}
 }
 
-func TestChunk(t *testing.T) {
-	cases := []struct {
-		items    []int
-		size     int
-		expected [][]int
-		err      error
-	}{
-		{[]int{}, 1, [][]int{}, nil},
-		{[]int{1, 2}, 1, [][]int{{1}, {2}}, nil},
-		{[]int{1, 2}, 0, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2}, -1, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 3, [][]int{{1, 2, 3}, {4, 5}}, nil},
-		{[]int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, nil},
-	}
-	for i, c := range cases {
-		chunks, err := Chunk(c.items, c.size)
+func TestChanChunk(t *testing.T) {
+	for i, c := range chunkTestCases {
+		chunks, err := ChunkChanGenerator(c.items, c.size)
 		if err != c.err {
 			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
 			continue
@@ -126,14 +133,14 @@ func TestChunk(t *testing.T) {
 	}
 }
 
-func BenchmarkChunk(b *testing.B) {
+func BenchmarkChanChunk(b *testing.B) {
 	items := make([]int, benchChunk)
 	for i := range items {
 		items[i] = i
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g, err := Chunk(items, 2)
+		g, err := ChunkChanGenerator(items, 2)
 		if err != nil {
 			b.Errorf("failed: %v", err)
 		}
@@ -148,31 +155,14 @@ func BenchmarkChunk(b *testing.B) {
 	}
 }
 
-func TestGenerator(t *testing.T) {
+func TestFuncGenerator(t *testing.T) {
 	var (
 		j   int
 		err error
 	)
-	cases := []struct {
-		start    int
-		stop     int
-		step     int
-		expected []int
-		err      error
-	}{
-		{0, 0, 1, []int{}, nil},
-		{0, 1, 1, []int{0}, nil},
-		{0, 1, 0, nil, ErrOffsetIteration},
-		{0, 1, -1, nil, ErrOffsetIteration},
-		{0, 0, 1, []int{}, nil},
-		{2, 0, 1, []int{}, nil},
-		{0, 3, 1, []int{0, 1, 2}, nil},
-		{3, 12, 2, []int{3, 5, 7, 9, 11}, nil},
-		{-7, 10, 5, []int{-7, -2, 3, 8}, nil},
-	}
-	for i, c := range cases {
+	for i, c := range testCases {
 		output := make([]int, 0, len(c.expected))
-		g := Generator(c.start, c.stop, c.step)
+		g := FuncGenerator(c.start, c.stop, c.step)
 		for j, err = g(); err == nil; j, err = g() {
 			output = append(output, j)
 		}
@@ -190,14 +180,14 @@ func TestGenerator(t *testing.T) {
 	}
 }
 
-func BenchmarkGenerator(b *testing.B) {
+func BenchmarkFuncGenerator(b *testing.B) {
 	var (
 		j   int
 		err error
 	)
 	for i := 0; i < b.N; i++ {
-		g := Generator(0, benchStop, 1)
-		k := 0
+		g := FuncGenerator(i, i+benchStop, 1)
+		k := i
 		for j, err = g(); err == nil; j, err = g() {
 			if k != j {
 				b.Errorf("failed %v != %v", k, j)
@@ -210,29 +200,14 @@ func BenchmarkGenerator(b *testing.B) {
 	}
 }
 
-func TestChunkGenerator(t *testing.T) {
+func TestChunkFuncGenerator(t *testing.T) {
 	var (
 		chunks []int
 		err    error
 	)
-	cases := []struct {
-		items    []int
-		size     int
-		expected [][]int
-		err      error
-	}{
-		{[]int{}, 1, [][]int{}, nil},
-		{[]int{1, 2}, 1, [][]int{{1}, {2}}, nil},
-		{[]int{1, 2}, 0, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2}, -1, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 3, [][]int{{1, 2, 3}, {4, 5}}, nil},
-		{[]int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, nil},
-	}
-	for i, c := range cases {
+	for i, c := range chunkTestCases {
 		output := make([][]int, 0, len(c.expected))
-		g := ChunkGenerator(c.items, c.size)
+		g := ChunkFuncGenerator(c.items, c.size)
 		for chunks, err = g(); err == nil; chunks, err = g() {
 			output = append(output, chunks)
 		}
@@ -262,7 +237,7 @@ func BenchmarkChunkGenerator(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		g := ChunkGenerator(items, 2)
+		g := ChunkFuncGenerator(items, 2)
 		j := 0
 		for chunks, err = g(); err == nil; chunks, err = g() {
 			if e := compareSliceInt(chunks, []int{j, j + 1}); e != nil {
@@ -277,26 +252,9 @@ func BenchmarkChunkGenerator(b *testing.B) {
 	}
 }
 
-func TestNewGenStruct(t *testing.T) {
-	cases := []struct {
-		start    int
-		stop     int
-		step     int
-		expected []int
-		err      error
-	}{
-		{0, 0, 1, []int{}, nil},
-		{0, 1, 1, []int{0}, nil},
-		{0, 1, 0, nil, ErrOffsetIteration},
-		{0, 1, -1, nil, ErrOffsetIteration},
-		{0, 0, 1, []int{}, nil},
-		{2, 0, 1, []int{}, nil},
-		{0, 3, 1, []int{0, 1, 2}, nil},
-		{3, 12, 2, []int{3, 5, 7, 9, 11}, nil},
-		{-7, 10, 5, []int{-7, -2, 3, 8}, nil},
-	}
-	for i, c := range cases {
-		g, err := NewGenStruct(c.start, c.stop, c.step)
+func TestNewStructGenerator(t *testing.T) {
+	for i, c := range testCases {
+		g, err := NewStructGenerator(c.start, c.stop, c.step)
 		if err != c.err {
 			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
 			continue
@@ -316,13 +274,13 @@ func TestNewGenStruct(t *testing.T) {
 	}
 }
 
-func BenchmarkGenStruct_Next(b *testing.B) {
+func BenchmarkStructGenerator_Next(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		g, err := NewGenStruct(0, benchStop, 1)
+		g, err := NewStructGenerator(i, i+benchStop, 1)
 		if err != nil {
 			b.Error(err)
 		}
-		k := 0
+		k := i
 		for v, ok := g.Next(); ok; v, ok = g.Next() {
 			if k != v {
 				b.Errorf("failed %v != %v", k, v)
@@ -333,22 +291,7 @@ func BenchmarkGenStruct_Next(b *testing.B) {
 }
 
 func TestNewGenStructChunk(t *testing.T) {
-	cases := []struct {
-		items    []int
-		size     int
-		expected [][]int
-		err      error
-	}{
-		{[]int{}, 1, [][]int{}, nil},
-		{[]int{1, 2}, 1, [][]int{{1}, {2}}, nil},
-		{[]int{1, 2}, 0, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2}, -1, [][]int{{1}, {2}}, ErrOffsetIteration},
-		{[]int{1, 2, 3, 4}, 2, [][]int{{1, 2}, {3, 4}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 2, [][]int{{1, 2}, {3, 4}, {5}}, nil},
-		{[]int{1, 2, 3, 4, 5}, 3, [][]int{{1, 2, 3}, {4, 5}}, nil},
-		{[]int{1, 2, 3}, 5, [][]int{{1, 2, 3}}, nil},
-	}
-	for i, c := range cases {
+	for i, c := range chunkTestCases {
 		g, err := NewGenStructChunk(c.items, c.size)
 		if err != c.err {
 			t.Errorf("failed [%d] error check: %v != %v", i, err, c.err)
@@ -369,7 +312,7 @@ func TestNewGenStructChunk(t *testing.T) {
 	}
 }
 
-func BenchmarkGenStruct_NextChunk(b *testing.B) {
+func BenchmarkStructGenerator_NextChunk(b *testing.B) {
 	items := make([]int, benchChunk)
 	for i := range items {
 		items[i] = i

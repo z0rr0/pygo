@@ -9,8 +9,8 @@ var (
 	ErrOffsetIteration = errors.New("iteration offset must be positive")
 )
 
-// XRange is a range generator.
-func XRange(start, stop, step int) (chan int, error) {
+// ChanGenerator is a range generator.
+func ChanGenerator(start, stop, step int) (chan int, error) {
 	if step < 1 {
 		return nil, ErrOffsetIteration
 	}
@@ -24,8 +24,8 @@ func XRange(start, stop, step int) (chan int, error) {
 	return c, nil
 }
 
-// Chunk splits items by chunks with maximum length=size.
-func Chunk(items []int, size int) (chan []int, error) {
+// ChunkChanGenerator splits items by chunks with maximum length=size.
+func ChunkChanGenerator(items []int, size int) (chan []int, error) {
 	if size < 1 {
 		return nil, ErrOffsetIteration
 	}
@@ -45,8 +45,8 @@ func Chunk(items []int, size int) (chan []int, error) {
 	return c, nil
 }
 
-// Generator is a function closure int generator.
-func Generator(start, stop, step int) func() (int, error) {
+// FuncGenerator is a function closure int generator.
+func FuncGenerator(start, stop, step int) func() (int, error) {
 	if step < 1 {
 		return func() (int, error) { return 0, ErrOffsetIteration }
 	}
@@ -61,8 +61,8 @@ func Generator(start, stop, step int) func() (int, error) {
 	}
 }
 
-// ChunkGenerator is a function closure chunk splitter.
-func ChunkGenerator(items []int, size int) func() ([]int, error) {
+// ChunkFuncGenerator is a function closure chunk splitter.
+func ChunkFuncGenerator(items []int, size int) func() ([]int, error) {
 	if size < 1 {
 		return func() ([]int, error) { return nil, ErrOffsetIteration }
 	}
@@ -81,38 +81,38 @@ func ChunkGenerator(items []int, size int) func() ([]int, error) {
 	}
 }
 
-// GenStruct is a struct generator.
-type GenStruct struct {
+// StructGenerator is a struct generator.
+type StructGenerator struct {
 	stop  int
 	step  int
 	value int
 	items []int
 }
 
-// NewGenStruct returns a new struct generator.
-func NewGenStruct(start, stop, step int) (*GenStruct, error) {
+// NewStructGenerator returns a new struct generator.
+func NewStructGenerator(start, stop, step int) (*StructGenerator, error) {
 	if step < 1 {
 		return nil, ErrOffsetIteration
 	}
-	return &GenStruct{stop: stop, step: step, value: start}, nil
+	return &StructGenerator{stop: stop, step: step, value: start}, nil
 }
 
 // NewGenStructChunk returns new chunk splitter.
-func NewGenStructChunk(items []int, size int) (*GenStruct, error) {
+func NewGenStructChunk(items []int, size int) (*StructGenerator, error) {
 	if size < 1 {
 		return nil, ErrOffsetIteration
 	}
-	return &GenStruct{stop: len(items), step: size, items: items}, nil
+	return &StructGenerator{stop: len(items), step: size, items: items}, nil
 }
 
 // Next returns a new generation value and flag that it is not the end.
-func (g *GenStruct) Next() (int, bool) {
+func (g *StructGenerator) Next() (int, bool) {
 	defer func() { g.value += g.step }()
 	return g.value, g.value < g.stop
 }
 
 // NextChunk returns a new generated chunk and flag that it is not the end.
-func (g *GenStruct) NextChunk() ([]int, bool) {
+func (g *StructGenerator) NextChunk() ([]int, bool) {
 	var i = g.value + g.step
 	if i > g.stop {
 		i = g.stop
